@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rifa 100 Puestos - Miguel Samudio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;700&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com/3.4.17"></script>
+<script>
+  tailwind.config = { theme: { extend: {
+    colors: { neon: '#39ff14', ink: '#05100a', panel: '#0a1a12' },
+    fontFamily: { sans: ['Rubik', 'system-ui', 'sans-serif'] }
+  } } };
+</script>
+<style>
+  html { color-scheme: dark; }
+  dialog::backdrop { background: rgba(0,0,0,.85); backdrop-filter: blur(4px); }
+  .paid::before, .paid::after {
+    content: ""; position: absolute; left: 50%; top: 50%; width: 66%; height: 3px;
+    border-radius: 2px; background: #fff; transform: translate(-50%, -50%) rotate(45deg);
+  }
+  .paid::after { transform: translate(-50%, -50%) rotate(-45deg); }
+</style>
+</head>
+
+<body class="min-h-screen bg-ink font-sans text-zinc-100 antialiased">
+
+<!-- Dashboard fijo -->
+<header class="sticky top-0 z-30 border-b border-neon/40 bg-ink/90 backdrop-blur">
+  <div class="mx-auto max-w-3xl px-4 py-3">
+    <div class="flex flex-col items-center justify-between gap-3 sm:flex-row">
+      <div class="flex items-center gap-2">
+        <h1 class="text-xl font-bold text-neon [text-shadow:0_0_14px_rgba(57,255,20,.7)]">Rifa de 100 puestos</h1>
+        <span id="syncStatus" class="rounded-full bg-yellow-500/20 px-2.5 py-0.5 text-xs font-medium text-yellow-400">Conectando...</span>
+      </div>
+      <button id="btnExport" class="flex items-center gap-2 rounded-lg border border-neon/50 bg-neon/10 px-4 py-1.5 text-sm font-medium text-neon transition hover:bg-neon/20">
+        <svg class="size-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+        Exportar CSV
+      </button>
+    </div>
+    
+    <div class="mt-4 grid grid-cols-3 rounded-xl border border-neon/25 text-center sm:grid-cols-4">
+      <div class="py-2">
+        <p class="flex items-center justify-center gap-1.5 text-xs text-zinc-400"><i class="size-2.5 rounded-full bg-white"></i>Disponibles</p>
+        <p id="cDisp" class="text-xl font-bold tabular-nums">100</p>
+      </div>
+      <div class="border-l border-neon/25 py-2">
+        <p class="flex items-center justify-center gap-1.5 text-xs text-zinc-400"><i class="size-2.5 rounded-full bg-yellow-400"></i>Pendientes</p>
+        <p id="cPend" class="text-xl font-bold tabular-nums">0</p>
+      </div>
+      <div class="border-l border-neon/25 py-2">
+        <p class="flex items-center justify-center gap-1.5 text-xs text-zinc-400"><i class="size-2.5 rounded-full bg-green-700"></i>Pagados</p>
+        <p id="cPaid" class="text-xl font-bold tabular-nums">0</p>
+      </div>
+      <div class="col-span-3 border-t border-neon/25 py-2 sm:col-span-1 sm:border-l sm:border-t-0">
+        <p class="text-xs text-zinc-400">Recaudado</p>
+        <p id="cTotal" class="text-xl font-bold tabular-nums text-neon">$ 0</p>
+      </div>
+    </div>
+  </div>
+</header>
+
+<main class="mx-auto max-w-3xl px-4 py-6">
+  <!-- Grilla -->
+  <div class="rounded-2xl border border-neon/30 bg-panel p-3 shadow-[0_0_30px_rgba(57,255,20,.12)] sm:p-6">
+    <div id="grid" class="grid grid-cols-5 gap-2 sm:grid-cols-10 sm:gap-3"></div>
+  </div>
+  
+  <p id="hint" class="mt-4 mb-8 text-center text-sm text-zinc-500"></p>
+
+  <!-- Lista de números -->
+  <div class="rounded-2xl border border-neon/30 bg-panel p-4 shadow-[0_0_30px_rgba(57,255,20,.12)] sm:p-6">
+    <h2 class="mb-4 text-lg font-bold text-white">Listado de Números</h2>
+    <div class="flex flex-col gap-2 max-h-96 overflow-y-auto pr-2" id="listaNumeros"></div>
+  </div>
+</main>
+
+<!-- Modal de edición -->
+<dialog id="modal" class="w-[92vw] max-w-sm rounded-2xl bg-transparent text-zinc-100 p-0">
+  <form id="form" class="rounded-2xl border border-neon/50 bg-panel p-5 shadow-[0_0_30px_rgba(57,255,20,.25)]">
+    <div class="mb-5 flex items-center gap-4">
+      <div id="mBall"></div>
+      <h2 class="text-lg font-bold">Gestionar número</h2>
+    </div>
+
+    <label class="mb-3 block text-sm text-zinc-300">Estado
+      <select id="estado" class="mt-1 w-full rounded-lg border border-neon/30 bg-ink px-3 py-2 text-zinc-100 focus:outline-none focus:ring-2 focus:ring-neon">
+        <option value="disponible">Disponible</option>
+        <option value="pendiente">Pendiente</option>
+        <option value="pagado">Pagado</option>
+      </select>
+    </label>
+
+    <label class="mb-3 block text-sm text-zinc-300">Nombre del comprador
+      <input id="nombre" type="text" maxlength="60" autocomplete="off" placeholder="Nombre y apellido"
+        class="mt-1 w-full rounded-lg border border-neon/30 bg-ink px-3 py-2 text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-neon">
+    </label>
+
+    <label class="block text-sm text-zinc-300">Teléfono
+      <input id="telefono" type="tel" inputmode="tel" maxlength="20" autocomplete="off" placeholder="3000000000"
+        class="mt-1 w-full rounded-lg border border-neon/30 bg-ink px-3 py-2 text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-neon">
+    </label>
+
+    <button type="button" id="btnWa" class="mt-4 flex w-full items-center justify-center gap-2 rounded-lg bg-green-500 py-2.5 font-bold text-white transition hover:bg-green-600 focus:ring-2 focus:ring-green-400">
+      <svg class="size-5" fill="currentColor" viewBox="0 0 24 24"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51a12.8 12.8 0 00-.57-.01c-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+      Enviar WhatsApp
+    </button>
+
+    <div class="mt-6 flex flex-wrap gap-2 sm:flex-nowrap">
+      <button type="button" id="btnLiberar" class="w-full rounded-lg border border-red-500/50 bg-red-500/10 py-2.5 text-sm font-medium text-red-500 transition hover:bg-red-500/20 sm:w-1/3">Liberar</button>
+      <button type="button" id="cancel" class="w-full rounded-lg border border-zinc-600 py-2.5 text-sm font-medium transition hover:bg-white/5 sm:w-1/3">Cancelar</button>
+      <button type="submit" class="w-full rounded-lg bg-neon py-2.5 text-sm font-bold text-black transition hover:brightness-110 sm:w-1/3">Guardar</button>
+    </div>
+  </form>
+</dialog>
+
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+  import { getDatabase, ref, set, remove, onValue } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyD8Fw4lkHc9Yn0PWx3WuMj-Cp-u8n-fmYc",
+    authDomain: "rifa-100-puestos-fcfe2.firebaseapp.com",
+    databaseURL: "https://rifa-100-puestos-fcfe2-default-rtdb.firebaseio.com",
+    projectId: "rifa-100-puestos-fcfe2",
+    storageBucket: "rifa-100-puestos-fcfe2.firebasestorage.app",
+    messagingSenderId: "772223550404",
+    appId: "1:772223550404:web:62a3a05cec605ee9435a91"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const db = getDatabase(app);
+  const rifaRef = ref(db, 'rifa_100_puestos');
+
+  const PRECIO = 20000;
+  const fmt = new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 });
+
+  const ESTADOS = {
+    disponible: { label: 'Disponible', cls: 'bg-white text-black' },
+    pendiente:  { label: 'Pendiente',  cls: 'bg-yellow-400 text-black' },
+    pagado:     { label: 'Pagado',     cls: 'paid bg-green-800 text-white/60 ring-1 ring-green-500/60' }
+  };
+  
+  const BALL = 'relative aspect-square w-full rounded-full text-sm font-bold tabular-nums transition motion-safe:hover:scale-110 hover:shadow-[0_0_14px_rgba(57,255,20,.8)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neon sm:text-base';
+  const PREVIEW = 'relative grid size-16 shrink-0 place-items-center rounded-full text-2xl font-bold tabular-nums';
+
+  const $ = id => document.getElementById(id);
+  const pad = n => String(n).padStart(2, '0');
+
+  let data = {};
+
+  onValue(rifaRef, (snapshot) => {
+    data = snapshot.val() || {};
+    const status = $('syncStatus');
+    status.textContent = 'En línea';
+    status.className = 'rounded-full bg-neon/20 px-2.5 py-0.5 text-xs font-medium text-neon';
+    render();
+  }, (error) => {
+    const status = $('syncStatus');
+    status.textContent = 'Error de conexión';
+    status.className = 'rounded-full bg-red-500/20 px-2.5 py-0.5 text-xs font-medium text-red-400';
+    console.error(error);
+  });
+
+  const getNum = k => {
+    const r = data[k];
+    return r && ESTADOS[r.estado] ? r : { estado: 'disponible', nombre: '', telefono: '' };
+  };
+
+  function render() {
+    const grid = $('grid');
+    const listaNumeros = $('listaNumeros');
+    
+    grid.replaceChildren();
+    listaNumeros.replaceChildren();
+    
+    const count = { disponible: 0, pendiente: 0, pagado: 0 };
+
+    for (let i = 0; i < 100; i++) {
+      const k = pad(i), r = getNum(k), est = ESTADOS[r.estado];
+      count[r.estado]++;
+
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = k;
+      b.className = BALL + ' ' + est.cls;
+      b.title = r.nombre ? `${r.nombre} ${r.telefono ? ' - ' + r.telefono : ''}` : est.label;
+      b.addEventListener('click', () => openModal(k));
+      grid.append(b);
+
+      const item = document.createElement('div');
+      item.className = 'flex items-center justify-between rounded-lg bg-zinc-800/50 px-4 py-2 text-sm';
+      
+      let stateColor = 'bg-zinc-700 text-zinc-300';
+      if (r.estado === 'pendiente') stateColor = 'bg-yellow-500 text-black';
+      if (r.estado === 'pagado') stateColor = 'bg-green-600 text-white';
+
+      item.innerHTML = `
+        <div class="flex items-center gap-3">
+          <span class="inline-flex size-8 items-center justify-center rounded-full bg-zinc-950 font-bold text-white shadow-inner shadow-white/10">${k}</span>
+          <span class="font-medium text-zinc-200">${r.nombre || '<span class="text-zinc-500 italic">Libre</span>'}</span>
+        </div>
+        <span class="rounded px-2 py-1 text-xs font-semibold ${stateColor}">${est.label}</span>
+      `;
+      listaNumeros.append(item);
+    }
+
+    $('cDisp').textContent = count.disponible;
+    $('cPend').textContent = count.pendiente;
+    $('cPaid').textContent = count.pagado;
+    $('cTotal').textContent = fmt.format(count.pagado * PRECIO);
+  }
+
+  let current = null;
+
+  function paintPreview() {
+    const b = $('mBall');
+    b.className = PREVIEW + ' ' + ESTADOS[$('estado').value].cls;
+    b.textContent = current;
+  }
+
+  function openModal(k) {
+    current = k;
+    const r = getNum(k);
+    $('estado').value = r.estado;
+    $('nombre').value = r.nombre;
+    $('telefono').value = r.telefono;
+    paintPreview();
+    $('modal').showModal();
+  }
+
+  $('estado').addEventListener('change', paintPreview);
+  $('cancel').addEventListener('click', () => $('modal').close());
+  $('modal').addEventListener('click', e => { if (e.target === $('modal')) $('modal').close(); });
+
+  $('form').addEventListener('submit', async e => {
+    e.preventDefault();
+    const numRef = ref(db, `rifa_100_puestos/${current}`);
+    await set(numRef, {
+      estado: $('estado').value,
+      nombre: $('nombre').value.trim(),
+      telefono: $('telefono').value.trim()
+    });
+    $('modal').close();
+  });
+
+  $('btnLiberar').addEventListener('click', async () => {
+    if (confirm(`¿Estás seguro de liberar el puesto ${current}? Se borrarán los datos del comprador.`)) {
+      const numRef = ref(db, `rifa_100_puestos/${current}`);
+      await remove(numRef);
+      $('modal').close();
+    }
+  });
+
+  $('btnWa').addEventListener('click', () => {
+    let tel = $('telefono').value.replace(/\D/g, ''); 
+    let nom = $('nombre').value.trim() || 'Hola';
+    let est = $('estado').value;
+    
+    if (tel.length < 10) {
+      alert('Por favor ingresa un número de teléfono válido (al menos 10 dígitos) para enviar el WhatsApp.');
+      return;
+    }
+    if (!tel.startsWith('57') && tel.length === 10) tel = '57' + tel;
+
+    let mensaje = `Hola ${nom}, te escribo por la Rifa. Tu número es el *${current}*. `;
+    if (est === 'pendiente') {
+      mensaje += `Recuerda que está pendiente de pago por valor de ${fmt.format(PRECIO)}. ¡Gracias por el apoyo!`;
+    } else if (est === 'pagado') {
+      mensaje += `Te confirmo que ya registré tu pago. ¡Mucha suerte en el sorteo!`;
+    } else {
+      mensaje += `El número te lo separé temporalmente. Quedo atento.`;
+    }
+
+    const url = `https://wa.me/${tel}?text=${encodeURIComponent(mensaje)}`;
+    window.open(url, '_blank');
+  });
+
+  $('btnExport').addEventListener('click', () => {
+    let csv = "Numero;Estado;Nombre;Telefono\n";
+    let hayDatos = false;
+    for (let i = 0; i < 100; i++) {
+      let k = pad(i);
+      if (data[k]) {
+        hayDatos = true;
+        csv += `${k};${data[k].estado};${data[k].nombre || ''};${data[k].telefono || ''}\n`;
+      }
+    }
+    if (!hayDatos) {
+      alert('No hay números vendidos o pendientes para exportar aún.');
+      return;
+    }
+    const blob = new Blob(["\uFEFF" + csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", "Rifa_100_Puestos.csv");
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  });
+
+  $('hint').textContent = `Toca un número para editarlo. Cada puesto vale ${fmt.format(PRECIO)} COP.`;
+  render();
+</script>
+</body>
+</html>
